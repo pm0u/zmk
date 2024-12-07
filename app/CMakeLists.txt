@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.13.1)
 
 set(CONFIG_APPLICATION_DEFINED_SYSCALL true)
 
+set(ZEPHYR_BOARD_ALIASES "boards/aliases.cmake")
 set(ZEPHYR_EXTRA_MODULES "${ZMK_EXTRA_MODULES};${CMAKE_CURRENT_SOURCE_DIR}/module;${CMAKE_CURRENT_SOURCE_DIR}/keymap-module")
 
 # Find Zephyr. This also loads Zephyr's build system.
@@ -46,8 +47,8 @@ if ((NOT CONFIG_ZMK_SPLIT) OR CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
   target_sources_ifdef(CONFIG_ZMK_MOUSE app PRIVATE src/mouse/input_listener.c)
   target_sources(app PRIVATE src/behaviors/behavior_key_press.c)
   target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_KEY_TOGGLE app PRIVATE src/behaviors/behavior_key_toggle.c)
-  target_sources(app PRIVATE src/behaviors/behavior_hold_tap.c)
-  target_sources(app PRIVATE src/behaviors/behavior_sticky_key.c)
+  target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_HOLD_TAP app PRIVATE src/behaviors/behavior_hold_tap.c)
+  target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_STICKY_KEY app PRIVATE src/behaviors/behavior_sticky_key.c)
   target_sources(app PRIVATE src/behaviors/behavior_caps_word.c)
   target_sources(app PRIVATE src/behaviors/behavior_key_repeat.c)
   target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_MACRO app PRIVATE src/behaviors/behavior_macro.c)
@@ -63,6 +64,7 @@ if ((NOT CONFIG_ZMK_SPLIT) OR CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
   target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_SENSOR_ROTATE_COMMON app PRIVATE src/behaviors/behavior_sensor_rotate_common.c)
   target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_MOUSE_KEY_PRESS app PRIVATE src/behaviors/behavior_mouse_key_press.c)
   target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_INPUT_TWO_AXIS app PRIVATE src/behaviors/behavior_input_two_axis.c)
+  target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_STUDIO_UNLOCK app PRIVATE src/behaviors/behavior_studio_unlock.c)
   target_sources(app PRIVATE src/combo.c)
   target_sources(app PRIVATE src/behaviors/behavior_tap_dance.c)
   target_sources(app PRIVATE src/behavior_queue.c)
@@ -104,5 +106,28 @@ target_sources(app PRIVATE src/main.c)
 
 add_subdirectory(src/display/)
 add_subdirectory_ifdef(CONFIG_SETTINGS src/settings/)
+
+if (CONFIG_ZMK_STUDIO_RPC)
+  # For some reason this is failing if run from a different sub-file.
+  list(APPEND CMAKE_MODULE_PATH ${ZEPHYR_BASE}/modules/nanopb)
+
+  include(nanopb)
+
+    # Turn off the default nanopb behavior
+  set(NANOPB_GENERATE_CPP_STANDALONE OFF)
+
+  nanopb_generate_cpp(proto_srcs proto_hdrs RELPATH ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}
+                        ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/studio.proto
+                        ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/meta.proto
+                        ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/core.proto
+                        ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/behaviors.proto
+                        ${ZEPHYR_ZMK_STUDIO_MESSAGES_MODULE_DIR}/proto/zmk/keymap.proto
+  )
+
+  target_include_directories(app PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+  target_sources(app PRIVATE ${proto_srcs} ${proto_hdrs})
+
+  add_subdirectory(src/studio)
+endif()
 
 zephyr_cc_option(-Wfatal-errors)
